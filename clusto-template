@@ -24,8 +24,8 @@ def get_attribute_l(es, attr):
     return [getattr(e, attr) for e in es]
 
 
-def colorhash(string):
-    return hashlib.md5(string).hexdigest()[:6]
+def colorhash(node):
+    return hashlib.md5(node.name).hexdigest()[:6]
 
 
 def do_template(template, outputfile, template_root, name):
