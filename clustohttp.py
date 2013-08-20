@@ -5,15 +5,31 @@ except ImportError:
     import json
 from IPy import IP
 
+import contextlib
+import urllib2
+import urlparse
 from urllib import urlencode, quote
-from urlparse import urlsplit
 from time import time
+import ssl
 import httplib
 import logging
 import os
 
 
 log = logging.getLogger('clustohttp')
+
+CA_CERTS = '/etc/ssl/certs/ca-certificates.crt'
+
+
+class VerifiedHTTPSOpener(urllib2.HTTPSHandler):
+    def https_open(self, req):
+        if os.path.exists(CA_CERTS):
+            frags = urlparse.urlparse(req.get_full_url())
+            ssl.get_server_certificate((frags.hostname, frags.port or 443),
+                ca_certs=CA_CERTS)
+        return self.do_open(httplib.HTTPSConnection, req)
+
+urllib2.install_opener(urllib2.build_opener(VerifiedHTTPSOpener))
 
 
 class ClustoProxy(object):
@@ -37,31 +53,21 @@ class ClustoProxy(object):
         start = time()
         if not isinstance(body, basestring):
             body = urlencode(body)
-        url = urlsplit(url, 'http')
 
+        req = urllib2.Request(url)
         if self.auth:
-            headers['Authorization'] = 'Basic %s' % self.auth.encode('base64')
+            req.add_header('Authorization', 'Basic %s' % self.auth.encode('base64'))
 
-        if url.scheme == 'https':
-            conn = httplib.HTTPSConnection(url.hostname, url.port)
-        else:
-            conn = httplib.HTTPConnection(url.hostname, url.port)
-        if url.query:
-            query = '%s?%s' % (url.path, url.query)
-        else:
-            query = url.path
-        conn.request(method, query, body, headers)
-        response = conn.getresponse()
-        length = response.getheader('Content-length', None)
-        if length:
-            data = response.read(int(length))
-        else:
-            data = response.read()
-        conn.close()
-        if response.status >= 400:
-            log.warning('Server error %s: %s' % (response.status, data))
-        log.debug('Response time: %.03f' % (time() - start))
-        return (response.status, response.getheaders(), data)
+        with contextlib.closing(urllib2.urlopen(req)) as response:
+            length = response.info().get('Content-length', None)
+            if length is not None:
+                data = response.read(int(length))
+            else:
+                data = response.read()
+            if response.getcode() >= 400:
+                log.warning('Server error %s: %s' % (response.status, data))
+            log.debug('Response time: %.03f' % (time() - start))
+            return (response.getcode(), response.info(), data)
 
     def get_entities(self, **kwargs):
         for k, v in kwargs.items():
