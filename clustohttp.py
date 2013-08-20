@@ -42,7 +42,10 @@ class ClustoProxy(object):
         if self.auth:
             headers['Authorization'] = 'Basic %s' % self.auth.encode('base64')
 
-        conn = httplib.HTTPConnection(url.hostname, url.port)
+        if url.scheme == 'https':
+            conn = httplib.HTTPSConnection(url.hostname, url.port)
+        else:
+            conn = httplib.HTTPConnection(url.hostname, url.port)
         if url.query:
             query = '%s?%s' % (url.path, url.query)
         else:
